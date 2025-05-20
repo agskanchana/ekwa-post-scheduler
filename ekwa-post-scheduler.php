@@ -250,3 +250,60 @@ add_action( 'ekwa_check_smart_scheduled_posts', function() {
         }
     }
 });
+
+// Remove Yoast article published_time and modified_time meta tags for smart scheduled posts
+function ekwa_filter_yoast_metadata($presentation) {
+    // We don't need to modify the presentation object directly
+    // Just return it unchanged to avoid errors
+    return $presentation;
+}
+add_filter('wpseo_frontend_presentation', 'ekwa_filter_yoast_metadata');
+
+// Use a more reliable approach to remove Yoast meta tags
+function ekwa_remove_yoast_meta_tags() {
+    if (is_singular('post')) {
+        global $post;
+        if (get_post_status($post) === 'smart_scheduled') {
+            // Remove Yoast article published/modified time meta tags
+            add_filter('wpseo_frontend_presentation_output', function($output) {
+                // Remove the meta tags using regex
+                $output = preg_replace('/<meta property="article:published_time".*?\/>/i', '', $output);
+                $output = preg_replace('/<meta property="article:modified_time".*?\/>/i', '', $output);
+                return $output;
+            });
+
+            // Alternative method: Remove specific opengraph tags
+            add_filter('wpseo_opengraph_type', '__return_false');
+            add_filter('wpseo_add_opengraph_article_publisher', '__return_false');
+            add_filter('wpseo_opengraph_author_facebook', '__return_false');
+
+            // Disable all article tags
+            add_filter('wpseo_opengraph_show_article_author_facebook', '__return_false');
+            add_filter('wpseo_opengraph_show_article_section', '__return_false');
+            add_filter('wpseo_opengraph_show_publish_date', '__return_false');
+        }
+    }
+}
+add_action('template_redirect', 'ekwa_remove_yoast_meta_tags', 5);
+
+// Add a buffer to remove any remaining meta tags that might slip through
+add_action('wp_head', function() {
+    if (is_singular('post')) {
+        global $post;
+        if (get_post_status($post) === 'smart_scheduled') {
+            ob_start(function($output) {
+                // Remove the published_time and modified_time meta tags
+                $output = preg_replace('/<meta property="article:published_time".*?\/>/i', '', $output);
+                $output = preg_replace('/<meta property="article:modified_time".*?\/>/i', '', $output);
+                return $output;
+            });
+
+            // Make sure to end the output buffer in footer
+            add_action('wp_footer', function() {
+                if (ob_get_level()) {
+                    ob_end_flush();
+                }
+            }, 999);
+        }
+    }
+}, 1);

@@ -227,6 +227,8 @@ add_action( 'ekwa_check_smart_scheduled_posts', function() {
             ),
         ),
         'posts_per_page' => -1,
+        'no_found_rows'  => true,
+        'cache_results'  => false,
     );
     $posts = get_posts( $args );
     foreach ( $posts as $post ) {
@@ -239,16 +241,38 @@ add_action( 'ekwa_check_smart_scheduled_posts', function() {
         $unlock_time = strtotime( "+$interval_value $interval_type", $scheduled_time );
 
         if ( $now >= $unlock_time ) {
-            // Publish the post
+            // Get current time for updating publish/modified dates
+            $current_time = current_time('mysql');
+            $current_time_gmt = current_time('mysql', true);
+
+            // Clean post cache before update
+            clean_post_cache($post->ID);
+
+            // Publish the post with updated dates - Option 1
             $update = array(
-                'ID'          => $post->ID,
-                'post_status' => 'publish',
+                'ID'               => $post->ID,
+                'post_status'      => 'publish',
+                'post_date'        => $current_time,
+                'post_date_gmt'    => $current_time_gmt,
+                'post_modified'    => $current_time,
+                'post_modified_gmt' => $current_time_gmt
             );
+
             wp_update_post( $update );
-            // Optionally, clean up meta
+
+            // Clean up meta
             delete_post_meta( $post->ID, '_ekwa_smart_scheduled' );
+
+            // Trigger action hook for integrations
+            do_action( 'ekwa_post_published_from_smart_scheduled', $post->ID );
+
+            // Force cache refresh
+            clean_post_cache($post->ID);
         }
     }
+
+    // Force a global cache flush to ensure everything is updated
+    wp_cache_flush();
 });
 
 // Remove Yoast article published_time and modified_time meta tags for smart scheduled posts

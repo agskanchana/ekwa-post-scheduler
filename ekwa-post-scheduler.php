@@ -171,22 +171,45 @@ function ekwa_exclude_smart_scheduled_from_query( $query ) {
 add_action( 'pre_get_posts', 'ekwa_exclude_smart_scheduled_from_query' );
 
 // Exclude smart scheduled posts from Yoast SEO XML sitemap
-function ekwa_yoast_exclude_smart_scheduled( $excluded, $post ) {
-    if ( get_post_status( $post->ID ) === 'smart_scheduled' ) {
-        return true;
-    }
-    return $excluded;
-}
-add_filter( 'wpseo_exclude_from_sitemap_by_post_ids', function( $excluded, $post_type ) {
+function ekwa_yoast_exclude_smart_scheduled( $excluded_posts_ids ) {
+    // Get all smart scheduled posts
     $args = array(
-        'post_type'   => $post_type,
-        'post_status' => 'smart_scheduled',
-        'fields'      => 'ids',
-        'nopaging'    => true,
+        'post_type'      => 'post',
+        'post_status'    => 'smart_scheduled',
+        'fields'         => 'ids',
+        'posts_per_page' => -1,
+        'no_found_rows'  => true,
     );
     $smart_posts = get_posts( $args );
-    return array_merge( $excluded, $smart_posts );
-}, 10, 2 );
+
+    // If we have smart scheduled posts, add them to the excluded list
+    if ( !empty( $smart_posts ) && is_array( $smart_posts ) ) {
+        $excluded_posts_ids = array_merge( $excluded_posts_ids, $smart_posts );
+    }
+
+    return $excluded_posts_ids;
+}
+add_filter( 'wpseo_exclude_from_sitemap_by_post_ids', 'ekwa_yoast_exclude_smart_scheduled' );
+
+// For older Yoast versions, also filter the post type sitemap entries
+function ekwa_filter_sitemap_entries_per_page($per_sitemap, $post_type = '') {
+    // Only filter query args if we have a post type
+    if ($post_type === 'post') {
+        add_filter('wpseo_posts_query_args', function($args) {
+            if (isset($args['post_status']) && is_array($args['post_status'])) {
+                $key = array_search('smart_scheduled', $args['post_status']);
+                if ($key !== false) {
+                    unset($args['post_status'][$key]);
+                }
+            } else {
+                $args['post_status'] = array('publish');
+            }
+            return $args;
+        });
+    }
+    return $per_sitemap;
+}
+add_filter('wpseo_sitemap_entries_per_page', 'ekwa_filter_sitemap_entries_per_page', 10, 2 );
 
 // Schedule cron event on plugin activation
 function ekwa_activate_scheduler() {
